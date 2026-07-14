@@ -1,0 +1,5 @@
+# Auto-optimizer researcher role — full tools for web + local research
+description = "Comprehensive researcher with web and local access for auto-optimizer"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

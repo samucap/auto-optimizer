@@ -1,0 +1,5 @@
+# Auto-optimizer analyst role
+description = "Metric-aware analyst for auto-optimizer pipeline"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

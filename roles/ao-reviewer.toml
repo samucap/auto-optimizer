@@ -1,0 +1,5 @@
+# Auto-optimizer adversarial reviewer role
+description = "Adversarial reviewer for auto-optimizer architecture and execution"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

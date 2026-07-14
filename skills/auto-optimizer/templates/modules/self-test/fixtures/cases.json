@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"n": 1, "expected_correctness_check": true},
+    {"n": 2, "expected_correctness_check": true},
+    {"n": 3, "expected_correctness_check": true},
+    {"n": 4, "expected_correctness_check": true},
+    {"n": 5, "expected_correctness_check": true}
+  ]
+}

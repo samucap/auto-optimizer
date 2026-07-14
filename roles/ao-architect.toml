@@ -1,0 +1,5 @@
+# Auto-optimizer architect role — worktree tournament candidates
+description = "Architecture tournament candidate for auto-optimizer"
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = true

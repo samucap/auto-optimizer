@@ -1,0 +1,4 @@
+# Runtime deps for auto-optimizer (resolved by uv run --with-requirements)
+pyyaml>=6.0
+jsonschema>=4.0
+xai-sdk>=1.0.0

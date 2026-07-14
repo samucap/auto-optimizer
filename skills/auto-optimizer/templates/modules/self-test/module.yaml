@@ -1,0 +1,44 @@
+name: self-test
+version: 1
+objective_type: code_improvement
+topic: |
+  Self-test module identical sandbox to _template; used to exercise failure paths.
+goal: |
+  Support offline self-test cycles (success, schema fail, eval fail, reward hack).
+deliverables:
+  - type: code_diff
+    paths: [sandbox/score.py]
+files_to_edit:
+  - sandbox/score.py
+files_forbidden:
+  - eval.py
+  - fixtures/**
+metrics:
+  primary: score_sum
+  direction: maximize
+  secondary:
+    - name: correctness
+      direction: maximize
+      min_value: 1.0
+budgets:
+  max_cycles: 5
+  max_reviewer_iterations: 1
+  max_architect_candidates: 2
+  max_executor_candidates: 2
+  max_wall_time_minutes: 30
+eval:
+  timeout_seconds: 60
+  retries: 0
+stages:
+  researcher: { enabled: true, web: false, min_sources: 0 }
+  analyst: { enabled: true }
+  architect: { enabled: true, candidates: 1 }
+  reviewer: { enabled: true, adversarial: true }
+  executor: { enabled: true, candidates: 2 }
+anti_reward_hacking:
+  forbid_edit_globs: [eval.py, fixtures/**]
+  detect: [deleted_tests, hardcoded_metric_constants, eval_harness_mutation]
+keep_policy:
+  require_primary_improved: true
+  require_secondary_gates: true
+  on_tie: keep_baseline
