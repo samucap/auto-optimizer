@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install auto-optimizer into Grok discovery paths via symlinks.
+# Install auto-optimizer into Grok discovery paths only (~/.grok).
+# Does not install a global CLI onto PATH.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,11 +22,16 @@ for f in "$REPO"/agents/*.md; do
 done
 shopt -u nullglob
 
-mkdir -p "$HOME/.local/bin"
-ln -sfn "$REPO/skills/auto-optimizer/bin/auto-optimizer" "$HOME/.local/bin/auto-optimizer"
-
 echo "auto-optimizer installed from $REPO"
 echo "  skill:    $GROK_HOME/skills/auto-optimizer"
-echo "  CLI:      $HOME/.local/bin/auto-optimizer"
 echo "  personas: $GROK_HOME/personas/ao-*.toml"
-echo "Ensure ~/.local/bin is on PATH. Restart Grok TUI or wait for skill reload."
+echo "  roles:    $GROK_HOME/roles/ao-*.toml"
+echo "  agents:   $GROK_HOME/agents/ao-*.md"
+echo ""
+echo "In Grok TUI:  /auto-optimizer"
+echo "Shell runners (from this clone):"
+echo "  export AO_HOME=\"$REPO\""
+echo "  \"\$AO_HOME/skills/auto-optimizer/bin/auto-optimizer\" init --module <name>"
+echo "  \"\$AO_HOME/skills/auto-optimizer/bin/start-loop.sh\" --module <name>"
+echo "  \"\$AO_HOME/skills/auto-optimizer/scripts/acp-orchestrator.sh\" --once --module <name>"
+echo "Restart Grok TUI or wait for skill reload."

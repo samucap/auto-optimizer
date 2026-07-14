@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Remove auto-optimizer symlinks from Grok discovery paths.
+# Remove auto-optimizer symlinks from Grok discovery paths (~/.grok only).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +16,6 @@ rm_if_link() {
 }
 
 rm_if_link "$GROK_HOME/skills/auto-optimizer"
-rm_if_link "$HOME/.local/bin/auto-optimizer"
 
 shopt -s nullglob
 for f in "$REPO"/personas/*.toml; do

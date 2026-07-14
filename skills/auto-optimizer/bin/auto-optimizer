@@ -2,7 +2,7 @@
 # auto-optimizer CLI — all Python via uv run
 set -euo pipefail
 
-# Resolve real path even when invoked via ~/.local/bin symlink
+# Resolve real path when this script is invoked via a symlink
 _SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$_SOURCE" ]]; do
   _DIR="$(cd "$(dirname "$_SOURCE")" && pwd)"
@@ -37,7 +37,7 @@ case "$cmd" in
 auto-optimizer — modular multi-subagent optimization loop
 
 Usage:
-  auto-optimizer init [--local] [--with-self-test] [--force]
+  auto-optimizer init [--module NAME] [--local] [--with-self-test] [--force]
   auto-optimizer once [--module NAME] [--local] [--live] [--dry-run] [--force-fail KIND]
   auto-optimizer start [--module NAME] [--max-cycles N] [--interval DUR] [--no-tmux] [--local] [--live]
   auto-optimizer stop [--local]
@@ -45,22 +45,27 @@ Usage:
   auto-optimizer self-test [--live]
   auto-optimizer eval --candidate-dir DIR [--module NAME] ...
 
+Invoke via path under this clone, e.g.:
+  export AO_HOME=/path/to/this/repo
+  \"\$AO_HOME/skills/auto-optimizer/bin/auto-optimizer\" init --module my-goal
+
 Python entrypoints use: uv run --with-requirements <skill>/scripts/requirements.txt
 EOF
     exit 0
     ;;
   init)
-    LOCAL=""; WITH_ST=""; FORCE=""
+    INIT_ARGS=()
     while [[ $# -gt 0 ]]; do
       case "$1" in
-        --local) LOCAL="--local" ;;
-        --with-self-test) WITH_ST="--with-self-test" ;;
-        --force) FORCE="--force" ;;
+        --local|--with-self-test|--force) INIT_ARGS+=("$1"); shift ;;
+        --module)
+          [[ $# -ge 2 ]] || die "--module requires a name"
+          INIT_ARGS+=(--module "$2"); shift 2
+          ;;
         *) die "unknown init arg: $1" ;;
       esac
-      shift
     done
-    uv_py "$SCRIPTS/cli_init.py" $LOCAL $WITH_ST $FORCE
+    uv_py "$SCRIPTS/cli_init.py" "${INIT_ARGS[@]}"
     ;;
   once)
     # Default offline unless user passes --live
