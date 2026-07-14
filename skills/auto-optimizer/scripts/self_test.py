@@ -13,6 +13,7 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS))
 
+from keep_apply import collect_apply_plan  # noqa: E402
 from run_cycle import run_cycle  # noqa: E402
 from workspace_init import init_workspace  # noqa: E402
 
@@ -20,6 +21,33 @@ from workspace_init import init_workspace  # noqa: E402
 def assert_true(cond: bool, msg: str) -> None:
     if not cond:
         raise AssertionError(msg)
+
+
+def _test_collect_apply_plan(tmp: Path) -> None:
+    """Module-local sandbox vs project-rooted paths."""
+    cand = tmp / "_cand"
+    (cand / "sandbox").mkdir(parents=True)
+    (cand / "sandbox" / "score.py").write_text("x=1\n", encoding="utf-8")
+    (cand / "skills" / "foo").mkdir(parents=True)
+    (cand / "skills" / "foo" / "bar.py").write_text("y=2\n", encoding="utf-8")
+
+    pairs = collect_apply_plan(
+        project_root=tmp,
+        module="m1",
+        mdir=tmp / "mod",
+        candidate_dir=cand,
+        files_to_edit=["sandbox/score.py", "skills/foo/bar.py"],
+    )
+    norm = {Path(d).as_posix() for _, d in pairs}
+    assert_true(
+        ".grok/auto-optimizer/modules/m1/sandbox/score.py" in norm,
+        f"expected module sandbox dest: {norm}",
+    )
+    assert_true(
+        "skills/foo/bar.py" in norm,
+        f"project path must stay project-relative: {norm}",
+    )
+    print("OK collect_apply_plan path mapping")
 
 
 def _git(tmp: Path, *args: str) -> str:
@@ -99,11 +127,17 @@ def main() -> int:
             "working-tree module sandbox must not be mutated by branch keep",
         )
 
-        # Proposal is reviewable on the branch
+        # Proposal is reviewable on the branch (code + AO_CYCLE ledger)
         show = _git(tmp, "show", f"{branch}:AO_KEEP.md")
         assert_true("proposal" in show.lower() or "Auto-Optimizer" in show, show[:200])
         _git(tmp, "show", f"{branch}:AO_KEEP_SCORES.json")
-        print("OK success cycle + proposal branch keep (main tree unchanged)")
+        cycle_json = _git(tmp, "show", f"{branch}:AO_CYCLE/cycle_report.json")
+        assert_true('"cycle_id"' in cycle_json or "cycle_id" in cycle_json, cycle_json[:200])
+        cycle_md = _git(tmp, "show", f"{branch}:AO_CYCLE/cycle_report.md")
+        assert_true("Cycle Report" in cycle_md or "cycle" in cycle_md.lower(), cycle_md[:200])
+        print("OK success cycle + proposal branch keep (main tree unchanged, AO_CYCLE present)")
+
+        _test_collect_apply_plan(tmp)
 
         # 2) schema failure
         report = run_cycle(

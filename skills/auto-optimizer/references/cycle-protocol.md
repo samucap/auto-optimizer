@@ -41,18 +41,21 @@ Experiments are **proposals**, not deployments — similar to a DRL/eval pipelin
 
 | Outcome | Meaning |
 |---------|---------|
-| `kept: true` | Eval improved → **git branch proposal** opened (`ao/<module>/<cycle_id>`) |
+| `kept: true` | Primary improved + gates (if required) → **git branch proposal** opened (`ao/<module>/<cycle_id>`) |
 | `merged: false` | Default: **never** merges into the current branch |
-| Main working tree | Unchanged on branch keep |
+| Main working tree / `HEAD` | Unchanged on branch keep (temp worktree only) |
 
 Self-contained review files committed on the proposal branch (experiments under `.grok/` are often gitignored):
 
 - `AO_KEEP.md` — metrics, findings, review/merge commands
 - `AO_KEEP_SCORES.json` — machine-readable scores
+- `AO_CYCLE/cycle_report.md` + `cycle_report.json` — cycle report snapshot
+- `AO_CYCLE/errors.jsonl` — optional error log tail if present
+- Winner file changes (module sandbox and/or project `files_to_edit`)
 
 Also written under the cycle dir (local harness):
 
-- `cycle_report.json` / `.md` — full scientific record
+- `cycle_report.json` / `.md` — full scientific record (updated after keep with final `keep` meta)
 - `keep.json` — branch, commit_sha, files, mode
 - `results.tsv` / `results.jsonl` — longitudinal log
 
@@ -61,6 +64,7 @@ Also written under the cycle dir (local harness):
 ```bash
 git log -1 ao/<module>/<cycle_id>
 git show ao/<module>/<cycle_id>:AO_KEEP.md
+git show ao/<module>/<cycle_id>:AO_CYCLE/cycle_report.md
 git merge ao/<module>/<cycle_id>   # only if you accept
 ```
 

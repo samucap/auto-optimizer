@@ -190,6 +190,9 @@ def run_cycle(
     scores: dict[str, Any] = {}
     kept = False
     keep_meta: dict[str, Any] = {}
+    should_keep = False
+    keep_findings: str | None = None
+    keep_rec: str | None = None
     status = "failed"
     root_cause: str | None = None
     recommendation: str | None = None
@@ -482,11 +485,12 @@ def run_cycle(
             gr = run_grok_prompt(prompt, cwd=root, log_path=err_log)
             partial["reviewer_final"] = {"ok": gr.get("ok")}
 
-        # --- Keep / revert (proposal only — Karpathy-style) ---
+        # --- Keep decision (apply after cycle_report so AO_CYCLE can ship on branch) ---
         state["active_stage"] = "keep_revert"
         save_state(hroot, state)
         keep_policy = mod.get("keep_policy") or {}
         require_improved = keep_policy.get("require_primary_improved", True)
+        require_secondary = keep_policy.get("require_secondary_gates", True)
 
         if winner and not failed_stages:
             baseline_cand = cdir / "baseline_candidate"
@@ -502,12 +506,19 @@ def run_cycle(
                 retries=0,
             )
             scores["baseline"] = base_scores.get("primary")
+            scores["gates_passed"] = winner.get("gates_passed")
             improved = True
             if base_scores.get("primary") is not None and winner.get("primary") is not None:
                 if direction == "minimize":
                     improved = float(winner["primary"]) < float(base_scores["primary"])
                 else:
                     improved = float(winner["primary"]) > float(base_scores["primary"])
+
+            gates_ok = True
+            if require_secondary:
+                # Winner from eval includes gates_passed; default True only if key absent
+                # and require_secondary is off — when on, missing/false blocks keep.
+                gates_ok = bool(winner.get("gates_passed"))
 
             if require_improved and not improved:
                 kept = False
@@ -517,46 +528,26 @@ def run_cycle(
                     "Eval did not improve primary metric; no proposal branch opened. "
                     "Inspect candidates and try next cycle."
                 )
+            elif require_secondary and not gates_ok:
+                kept = False
+                root_cause = None
+                status = "success"
+                recommendation = (
+                    "Secondary metric gates failed; no proposal branch opened. "
+                    "Inspect candidate scores and module secondary gates."
+                )
             else:
-                findings = None
                 summary_p = cdir / "01_research" / "summary.md"
                 if summary_p.exists():
-                    findings = summary_p.read_text(encoding="utf-8")[:4000]
-                rec = (
-                    "Proposal branch opened (not merged). Review AO_KEEP.md and metrics, "
-                    "then merge only if you accept the change."
+                    keep_findings = summary_p.read_text(encoding="utf-8")[:4000]
+                keep_rec = (
+                    "Proposal branch opened (not merged). Review AO_KEEP.md, AO_CYCLE/, "
+                    "and metrics, then merge only if you accept the change."
                 )
-                kr = apply_keep(
-                    project_root=root,
-                    module=name,
-                    mdir=mdir,
-                    candidate_dir=Path(winner["path"]),
-                    cycle_id=cycle_id,
-                    mod=mod,
-                    scores=scores,
-                    experiment_path=str(cdir),
-                    recommendation=rec,
-                    findings=findings,
-                    dry_run=dry_run,
-                    keep_mode=keep_mode,
-                )
-                keep_meta = kr.to_dict()
-                _write_json(cdir / "keep.json", keep_meta)
-                if kr.kept:
-                    kept = True
-                    status = "success"
-                    root_cause = None
-                    recommendation = rec
-                    if kr.review_commands:
-                        recommendation += "\n\n" + "\n".join(f"`{c}`" for c in kr.review_commands)
-                    state["last_keep_branch"] = kr.branch
-                    state["last_keep_sha"] = kr.commit_sha
-                else:
-                    kept = False
-                    status = "failed"
-                    root_cause = kr.error or "keep proposal failed"
-                    failed_stages.append("keep")
-                    log_event(err_log, {"type": "keep_failed", "keep": keep_meta})
+                should_keep = True
+                status = "success"
+                root_cause = None
+                recommendation = keep_rec
         elif winner and force_fail is None and not any(
             s in failed_stages for s in ("researcher", "architect", "executor")
         ):
@@ -575,6 +566,7 @@ def run_cycle(
             status = "budget_exhausted"
             root_cause = "max_reviewer_iterations exceeded (forced)"
             kept = False
+            should_keep = False
             if "reviewer" not in failed_stages:
                 failed_stages.append("reviewer")
 
@@ -582,9 +574,11 @@ def run_cycle(
         log_event(err_log, {"type": "cycle_exception", "error": str(e), "tb": traceback.format_exc()})
         status = "budget_exhausted" if force_fail == "budget" else "failed"
         root_cause = root_cause or str(e)
+        should_keep = False
         if "researcher" not in failed_stages and "schema" in str(e).lower():
             failed_stages.append("researcher")
 
+    # Write cycle report first so keep can bundle AO_CYCLE/* onto the proposal branch
     report = build_report(
         cycle_id=cycle_id,
         module=name,
@@ -593,16 +587,75 @@ def run_cycle(
         failed_stages=failed_stages,
         partial_progress=partial,
         scores=scores,
-        kept=kept,
+        kept=False,
         recommendation=recommendation,
         errors_path=str(err_log) if err_log.exists() else None,
-        extra={"keep": keep_meta} if keep_meta else None,
+        extra=None,
     )
-    # kept=true means proposal opened, not merged into current branch
-    if kept and keep_meta.get("mode") == "branch":
-        report["recommendation"] = recommendation or report.get("recommendation")
     write_cycle_report(cdir, report)
-    if keep_meta and not (cdir / "keep.json").exists():
+
+    if should_keep and winner and force_fail is None:
+        extra_bundle: list[tuple[Path, str]] = []
+        for name_on_disk, dest in (
+            ("cycle_report.json", "AO_CYCLE/cycle_report.json"),
+            ("cycle_report.md", "AO_CYCLE/cycle_report.md"),
+        ):
+            p = cdir / name_on_disk
+            if p.is_file():
+                extra_bundle.append((p, dest))
+        if err_log.is_file() and err_log.stat().st_size > 0:
+            extra_bundle.append((err_log, "AO_CYCLE/errors.jsonl"))
+
+        kr = apply_keep(
+            project_root=root,
+            module=name,
+            mdir=mdir,
+            candidate_dir=Path(winner["path"]),
+            cycle_id=cycle_id,
+            mod=mod,
+            scores=scores,
+            experiment_path=str(cdir),
+            recommendation=keep_rec or recommendation,
+            findings=keep_findings,
+            dry_run=dry_run,
+            keep_mode=keep_mode,
+            extra_bundle=extra_bundle or None,
+        )
+        keep_meta = kr.to_dict()
+        _write_json(cdir / "keep.json", keep_meta)
+        if kr.kept:
+            kept = True
+            status = "success"
+            root_cause = None
+            recommendation = keep_rec or recommendation or ""
+            if kr.review_commands:
+                recommendation += "\n\n" + "\n".join(f"`{c}`" for c in kr.review_commands)
+            state["last_keep_branch"] = kr.branch
+            state["last_keep_sha"] = kr.commit_sha
+        else:
+            kept = False
+            status = "failed"
+            root_cause = kr.error or "keep proposal failed"
+            if "keep" not in failed_stages:
+                failed_stages.append("keep")
+            log_event(err_log, {"type": "keep_failed", "keep": keep_meta})
+
+        # Rewrite report with final keep outcome (local ledger; branch has pre-keep report)
+        report = build_report(
+            cycle_id=cycle_id,
+            module=name,
+            status=status if status in ("success", "failed", "budget_exhausted") else "failed",
+            root_cause=root_cause,
+            failed_stages=failed_stages,
+            partial_progress=partial,
+            scores=scores,
+            kept=kept,
+            recommendation=recommendation,
+            errors_path=str(err_log) if err_log.exists() else None,
+            extra={"keep": keep_meta} if keep_meta else None,
+        )
+        write_cycle_report(cdir, report)
+    elif keep_meta:
         _write_json(cdir / "keep.json", keep_meta)
 
     if status != "success":
@@ -625,7 +678,7 @@ def run_cycle(
     save_state(hroot, state)
 
     notes = root_cause or ""
-    if keep_meta.get("branch"):
+    if keep_meta.get("branch") and keep_meta.get("kept"):
         notes = (
             f"proposal_branch={keep_meta.get('branch')} "
             f"commit={keep_meta.get('commit_sha')} merged=false"

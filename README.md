@@ -88,7 +88,7 @@ Then edit:
 | `stages` | Enable stages; researcher `web`, candidate counts |
 | `eval` | Timeouts/retries; optional command (or use module-local `eval.py`) |
 | `sources` / `source_paths` | Seeds for the Researcher |
-| `keep_policy` | When to apply a winning candidate to the tree |
+| `keep_policy` | When to open a keep **proposal** (`mode`, primary/gates); never auto-merges |
 
 Optional: module-local `eval.py` next to `module.yaml` (see `_template`).
 
@@ -178,6 +178,7 @@ git branch --list 'ao/*'
 git log -1 ao/<module>/<cycle_id>
 git show ao/<module>/<cycle_id>:AO_KEEP.md
 git show ao/<module>/<cycle_id>:AO_KEEP_SCORES.json
+git show ao/<module>/<cycle_id>:AO_CYCLE/cycle_report.md
 
 # accept the proposal only if you want it in the codebase
 git merge ao/<module>/<cycle_id>
@@ -189,7 +190,7 @@ Also always check the harness ledger:
 - `.grok/auto-optimizer/experiments/<module>/<cycle_id>/keep.json`
 - `.grok/auto-optimizer/results.tsv`
 
-`kept=true` means **proposal opened**, not **shipped to production**.
+`kept=true` means **proposal opened**, not **shipped to production**. Your current branch `HEAD` does not move; only `ao/*` branches receive commits (via a temporary worktree).
 
 ---
 
@@ -205,7 +206,7 @@ export AO_HOME=<repo-root>
 Checks:
 
 1. `init` creates harness under `.grok/auto-optimizer/` and adds `.grok/` to `.gitignore`
-2. **Success** cycle on `_template` (mock research stages + real eval; keep improved sandbox)
+2. **Success** cycle on `_template` (mock research stages + real eval; proposal branch keep + `AO_CYCLE`)
 3. **Schema** failure → `failed` cycle report + `next_cycle_hints`
 4. **Eval** failure → failed report
 5. **Reward-hack** discard path

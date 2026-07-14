@@ -107,17 +107,23 @@ If the user is in TUI and wants **native subagents**, you (this session) orchest
 
 ### 6. Keep = proposal branch (not auto-merge)
 
-Karpathy-style / DRL-eval pipeline: if primary improved and gates pass → open a **reviewable git proposal**, do **not** merge into the user’s current branch.
+Karpathy-style / DRL-eval pipeline: if primary improved and secondary gates pass → open a **reviewable git proposal**, do **not** merge into the user’s current branch.
 
-Protocol (execute-plan-aligned; never checkout-switch the main workspace):
+Protocol (execute-plan-aligned; never checkout-switch or commit on the main workspace):
 
-1. `git branch ao/<module>/<cycle_id> <base_sha>`
-2. `git worktree add <tmp> ao/<module>/<cycle_id>`
-3. Apply winner files; commit `AO_KEEP.md` + `AO_KEEP_SCORES.json` (+ changed files, force-add if under gitignored `.grok/`)
-4. Remove worktree; write `experiments/.../keep.json`
-5. `kept: true` means **proposal opened**; `merged: false`
+1. Write local `cycle_report` + decide keep (ledger first).
+2. `git branch ao/<module>/<cycle_id> <base_sha>`
+3. `git worktree add <tmp> ao/<module>/<cycle_id>` (isolated; does not move `HEAD`)
+4. Apply winner files; commit on the **worktree only**:
+   - changed files (`git add -f` if under gitignored `.grok/`)
+   - `AO_KEEP.md` + `AO_KEEP_SCORES.json`
+   - `AO_CYCLE/cycle_report.{json,md}` (+ `AO_CYCLE/errors.jsonl` if present)
+5. Remove worktree; write `experiments/.../keep.json`; set `last_keep_*` in state
+6. `kept: true` means **proposal opened**; `merged: false` — never auto-merge
 
 If not a git repo, fallback inplace copy (`keep_policy.mode` / `--keep-mode`).
+
+**Git safety:** auto-optimizer never commits skill development onto the user’s current branch. Only `ao/*` proposal branches (temp worktree). Unsolicited commits on `main` from a TUI coding agent are unrelated and must not happen without user approval.
 
 ### 7. Always write cycle report + results_log
 

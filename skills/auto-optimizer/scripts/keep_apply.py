@@ -5,6 +5,7 @@ kept=true means a reviewable proposal was opened — not that main was updated.
 
 Execute-plan-aligned git rules:
 - Never switch the user's checked-out branch.
+- Never commit with cwd == project_root (only temp worktree).
 - Create branch from base_sha, apply via temp worktree, commit, remove worktree.
 - No auto-merge in v1.
 """
@@ -27,6 +28,7 @@ def _run(
     *,
     cwd: Path | None = None,
     check: bool = True,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
@@ -34,6 +36,7 @@ def _run(
         text=True,
         capture_output=True,
         check=check,
+        env=env,
     )
 
 
@@ -71,30 +74,14 @@ def keep_branch_name(module: str, cycle_id: str) -> str:
     return f"ao/{_slug(module)}/{_slug(cycle_id)}"
 
 
-def _is_project_path(path: str) -> bool:
-    """Heuristic: project-level paths vs module-local."""
-    p = path.replace("\\", "/").lstrip("./")
-    prefixes = (
-        "config/",
-        "src/",
-        "internal/",
-        "cmd/",
-        "pkg/",
-        "lib/",
-        "app/",
-        "services/",
-        "deploy/",
-    )
-    return p.startswith(prefixes) or p.startswith(".grok/") is False and "/" in p and p.split("/")[0] in {
-        "config",
-        "src",
-        "internal",
-        "cmd",
-        "pkg",
-        "lib",
-        "app",
-        "services",
-    }
+def _is_module_local(rel_n: str) -> bool:
+    """Module harness paths (sandbox / prompts / fixtures), not project source."""
+    p = rel_n.replace("\\", "/").lstrip("./")
+    if p.startswith(("sandbox/", "prompts/", "fixtures/")):
+        return True
+    if p in ("eval.py", "module.yaml"):
+        return True
+    return False
 
 
 def collect_apply_plan(
@@ -105,7 +92,14 @@ def collect_apply_plan(
     candidate_dir: Path,
     files_to_edit: list[str] | None,
 ) -> list[tuple[Path, Path]]:
-    """Return list of (src, dest_relative_to_project) pairs."""
+    """Return list of (src, dest_relative_to_project) pairs.
+
+    - Module-local paths (sandbox/, prompts/, fixtures/) → under
+      .grok/auto-optimizer/modules/<module>/...
+    - All other files_to_edit entries → project-relative as written
+      (no allowlist of top-level dirs).
+    - If files_to_edit is empty: copy candidate sandbox tree into module harness.
+    """
     pairs: list[tuple[Path, Path]] = []
     edits = list(files_to_edit or [])
 
@@ -120,28 +114,16 @@ def collect_apply_plan(
                 candidate_dir / rel_n,
                 candidate_dir / "sandbox" / Path(rel_n).name,
             ]
-            # if path is like sandbox/score.py
-            if not (candidate_dir / rel_n).exists() and rel_n.startswith("sandbox/"):
-                candidates.insert(0, candidate_dir / rel_n)
-
             src = next((c for c in candidates if c.is_file()), None)
             if src is None:
                 continue
 
-            if rel_n.startswith("sandbox/") or not _looks_project_rooted(rel_n):
-                # module-local under harness
-                dest = (
-                    Path(".grok")
-                    / "auto-optimizer"
-                    / "modules"
-                    / module
-                    / rel_n
-                )
+            if _is_module_local(rel_n):
+                dest = Path(".grok") / "auto-optimizer" / "modules" / module / rel_n
             else:
                 dest = Path(rel_n)
             add(src, dest)
     else:
-        # default: copy entire sandbox tree from candidate
         sandbox = candidate_dir / "sandbox"
         if sandbox.is_dir():
             for f in sandbox.rglob("*"):
@@ -158,22 +140,6 @@ def collect_apply_plan(
                     add(f, dest)
 
     return pairs
-
-
-def _looks_project_rooted(rel_n: str) -> bool:
-    first = rel_n.split("/")[0]
-    return first in {
-        "config",
-        "src",
-        "internal",
-        "cmd",
-        "pkg",
-        "lib",
-        "app",
-        "services",
-        "deploy",
-        "scripts",
-    }
 
 
 @dataclass
@@ -244,6 +210,7 @@ def _write_keep_bundle(
     recommendation: str | None,
     files: list[str],
     findings: str | None = None,
+    branch: str,
 ) -> None:
     scores_path = wt / "AO_KEEP_SCORES.json"
     scores_path.write_text(json.dumps(scores, indent=2, default=str) + "\n", encoding="utf-8")
@@ -267,7 +234,21 @@ def _write_keep_bundle(
     ]
     for f in files:
         lines.append(f"- `{f}`")
-    lines.extend(["", "## Findings", "", findings or "(see cycle report / research artifacts on disk)", ""])
+    lines.extend(
+        [
+            "",
+            "## Cycle report (on this branch)",
+            "",
+            "- `AO_CYCLE/cycle_report.md`",
+            "- `AO_CYCLE/cycle_report.json`",
+            "- `AO_CYCLE/errors.jsonl` (if present)",
+            "",
+            "## Findings",
+            "",
+            findings or "(see AO_CYCLE cycle report / research artifacts on disk)",
+            "",
+        ]
+    )
     if recommendation:
         lines.extend(["## Recommendation", "", recommendation, ""])
     lines.extend(
@@ -275,16 +256,21 @@ def _write_keep_bundle(
             "## Review commands",
             "",
             "```bash",
-            f"git log -1 ao/{_slug(module)}/{_slug(cycle_id)}",
-            f"git show HEAD:AO_KEEP.md   # on this branch",
-            f"git diff {scores.get('base_sha', 'HEAD~1') or 'HEAD~1'}...HEAD",
+            f"git log -1 {branch}",
+            f"git show {branch}:AO_KEEP.md",
+            f"git show {branch}:AO_CYCLE/cycle_report.md",
+            f"git diff {scores.get('base_sha', 'HEAD~1') or 'HEAD~1'}...{branch}",
             f"# accept proposal:",
-            f"git merge ao/{_slug(module)}/{_slug(cycle_id)}",
+            f"git merge {branch}",
             "```",
             "",
         ]
     )
     (wt / "AO_KEEP.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _delete_branch(project_root: Path, branch: str) -> None:
+    _run(["git", "branch", "-D", branch], cwd=project_root, check=False)
 
 
 def apply_branch(
@@ -300,9 +286,12 @@ def apply_branch(
     recommendation: str | None = None,
     findings: str | None = None,
     dry_run: bool = False,
+    extra_bundle: list[tuple[Path, str]] | None = None,
 ) -> KeepResult:
     if not is_git_repo(project_root):
         return KeepResult(mode="branch", kept=False, error="not a git repository")
+
+    project_root = project_root.resolve()
 
     pairs = collect_apply_plan(
         project_root=project_root,
@@ -311,7 +300,8 @@ def apply_branch(
         candidate_dir=candidate_dir,
         files_to_edit=files_to_edit,
     )
-    if not pairs:
+    # Allow proposal with ledger-only if extra_bundle provides content
+    if not pairs and not extra_bundle:
         return KeepResult(mode="branch", kept=False, error="no files to apply from candidate")
 
     try:
@@ -321,9 +311,17 @@ def apply_branch(
 
     branch = keep_branch_name(module, cycle_id)
     file_list = [str(d) for _, d in pairs]
+    for _, dest_rel in extra_bundle or []:
+        if dest_rel not in file_list:
+            file_list.append(dest_rel)
+    for marker in ("AO_KEEP.md", "AO_KEEP_SCORES.json"):
+        if marker not in file_list:
+            file_list.append(marker)
+
     review_cmds = [
         f"git log -1 {branch}",
         f"git show {branch}:AO_KEEP.md",
+        f"git show {branch}:AO_CYCLE/cycle_report.md",
         f"git diff {base_sha}...{branch}",
         f"git merge {branch}   # only if you accept the proposal",
     ]
@@ -338,7 +336,6 @@ def apply_branch(
             review_commands=review_cmds,
         )
 
-    # If branch exists, fail clearly
     exists = _run(
         ["git", "rev-parse", "--verify", branch],
         cwd=project_root,
@@ -354,8 +351,14 @@ def apply_branch(
         )
 
     wt_dir: Path | None = None
+    branch_created = False
+    succeeded = False
+    head_before = base_sha
+    err_msg: str | None = None
+    commit_sha: str | None = None
     try:
         _run(["git", "branch", branch, base_sha], cwd=project_root)
+        branch_created = True
         wt_dir = Path(tempfile.mkdtemp(prefix="ao-keep-wt-"))
         wt_dir.rmdir()
         # Checks out `branch` in an isolated worktree — does not move main checkout
@@ -363,8 +366,20 @@ def apply_branch(
             ["git", "worktree", "add", str(wt_dir), branch],
             cwd=project_root,
         )
+        wt_dir = wt_dir.resolve()
+
+        # Safety: never commit in the user's project checkout
+        if wt_dir == project_root:
+            raise RuntimeError("keep worktree path equals project_root; refusing commit")
 
         for src, dest_rel in pairs:
+            dest = wt_dir / dest_rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
+        for src, dest_rel in extra_bundle or []:
+            if not src.is_file():
+                continue
             dest = wt_dir / dest_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
@@ -382,16 +397,24 @@ def apply_branch(
             recommendation=recommendation,
             files=file_list,
             findings=findings,
+            branch=branch,
         )
 
-        # Force-add: harness paths under .grok/ are often gitignored but must ship on the proposal branch
+        # Force-add: harness paths under .grok/ are often gitignored
         _run(["git", "add", "-f", "AO_KEEP.md", "AO_KEEP_SCORES.json"], cwd=wt_dir)
         for _, dest_rel in pairs:
             _run(["git", "add", "-f", "--", str(dest_rel)], cwd=wt_dir)
+        for _, dest_rel in extra_bundle or []:
+            _run(["git", "add", "-f", "--", dest_rel], cwd=wt_dir)
+
+        # Ensure we have something staged (AO_KEEP* always present)
+        staged = _run(["git", "diff", "--cached", "--name-only"], cwd=wt_dir, check=False)
+        if not (staged.stdout or "").strip():
+            raise RuntimeError("nothing staged for keep proposal commit")
 
         msg = (
             f"ao(keep): proposal {module} {cycle_id}\n\n"
-            f"Proposal only — not merged. Review AO_KEEP.md and metrics.\n"
+            f"Proposal only — not merged. Review AO_KEEP.md, AO_CYCLE/, and metrics.\n"
             f"primary={scores.get('winner')} baseline={scores.get('baseline')}\n"
         )
         env_commit = os.environ.copy()
@@ -399,16 +422,39 @@ def apply_branch(
         env_commit.setdefault("GIT_AUTHOR_EMAIL", "auto-optimizer@localhost")
         env_commit.setdefault("GIT_COMMITTER_NAME", "auto-optimizer")
         env_commit.setdefault("GIT_COMMITTER_EMAIL", "auto-optimizer@localhost")
-        subprocess.run(
+        _run(
             ["git", "commit", "-m", msg],
-            cwd=str(wt_dir),
-            text=True,
-            capture_output=True,
-            check=True,
+            cwd=wt_dir,
             env=env_commit,
         )
         commit_sha = _run(["git", "rev-parse", "HEAD"], cwd=wt_dir).stdout.strip()
 
+        # Main checkout must be unchanged
+        head_after = _run(["git", "rev-parse", "HEAD"], cwd=project_root).stdout.strip()
+        if head_after != head_before:
+            raise RuntimeError(
+                f"project HEAD moved during keep (was {head_before}, now {head_after}); refusing"
+            )
+
+        succeeded = True
+    except (subprocess.CalledProcessError, OSError, RuntimeError) as e:
+        err_msg = str(e)
+        if isinstance(e, subprocess.CalledProcessError):
+            err_msg = (e.stderr or e.stdout or str(e)).strip() or "git keep failed"
+    finally:
+        if wt_dir is not None:
+            _run(
+                ["git", "worktree", "remove", "--force", str(wt_dir)],
+                cwd=project_root,
+                check=False,
+            )
+            if wt_dir.exists():
+                shutil.rmtree(wt_dir, ignore_errors=True)
+        # Delete orphan branch only after worktree is gone
+        if branch_created and not succeeded:
+            _delete_branch(project_root, branch)
+
+    if succeeded:
         return KeepResult(
             mode="branch",
             kept=True,
@@ -419,25 +465,13 @@ def apply_branch(
             files=file_list,
             review_commands=review_cmds,
         )
-    except subprocess.CalledProcessError as e:
-        err = (e.stderr or e.stdout or str(e)).strip()
-        # best-effort cleanup of branch if commit failed mid-way
-        return KeepResult(
-            mode="branch",
-            kept=False,
-            branch=branch,
-            base_sha=base_sha,
-            error=err or "git keep failed",
-        )
-    finally:
-        if wt_dir is not None:
-            _run(
-                ["git", "worktree", "remove", "--force", str(wt_dir)],
-                cwd=project_root,
-                check=False,
-            )
-            if wt_dir.exists():
-                shutil.rmtree(wt_dir, ignore_errors=True)
+    return KeepResult(
+        mode="branch",
+        kept=False,
+        branch=branch,
+        base_sha=base_sha,
+        error=err_msg or "git keep failed",
+    )
 
 
 def apply_keep(
@@ -454,6 +488,7 @@ def apply_keep(
     findings: str | None = None,
     dry_run: bool = False,
     keep_mode: str | None = None,
+    extra_bundle: list[tuple[Path, str]] | None = None,
 ) -> KeepResult:
     mode = resolve_keep_mode(
         keep_mode,
@@ -476,6 +511,7 @@ def apply_keep(
             recommendation=recommendation,
             findings=findings,
             dry_run=dry_run,
+            extra_bundle=extra_bundle,
         )
     return apply_inplace(
         project_root=project_root,

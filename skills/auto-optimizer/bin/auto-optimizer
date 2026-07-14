@@ -38,7 +38,7 @@ auto-optimizer — modular multi-subagent optimization loop
 
 Usage:
   auto-optimizer init [--module NAME] [--local] [--with-self-test] [--force]
-  auto-optimizer once [--module NAME] [--local] [--live] [--dry-run] [--force-fail KIND]
+  auto-optimizer once [--module NAME] [--local] [--live] [--dry-run] [--keep-mode MODE] [--force-fail KIND]
   auto-optimizer start [--module NAME] [--max-cycles N] [--interval DUR] [--no-tmux] [--local] [--live]
   auto-optimizer stop [--local]
   auto-optimizer status [--local]
