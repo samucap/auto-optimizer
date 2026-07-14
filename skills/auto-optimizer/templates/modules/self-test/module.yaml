@@ -39,6 +39,7 @@ anti_reward_hacking:
   forbid_edit_globs: [eval.py, fixtures/**]
   detect: [deleted_tests, hardcoded_metric_constants, eval_harness_mutation]
 keep_policy:
+  mode: auto
   require_primary_improved: true
   require_secondary_gates: true
   on_tie: keep_baseline

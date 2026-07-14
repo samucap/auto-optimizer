@@ -57,6 +57,9 @@ anti_reward_hacking:
     - hardcoded_metric_constants
     - eval_harness_mutation
 keep_policy:
+  # auto: git proposal branch if repo present, else inplace copy
+  # kept=true means proposal opened — never auto-merges into current branch
+  mode: auto
   require_primary_improved: true
   require_secondary_gates: true
   on_tie: keep_baseline

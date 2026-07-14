@@ -84,6 +84,9 @@ def default_state() -> dict[str, Any]:
         "last_error": None,
         "active_stage": None,
         "pending_adjustments": None,
+        # pointers only — proposal truth lives on the git branch + cycle_report
+        "last_keep_branch": None,
+        "last_keep_sha": None,
     }
 
 
@@ -106,6 +109,8 @@ def write_status_md(hroot: Path, state: dict[str, Any]) -> None:
         f"- **updated_at**: {state.get('updated_at')}",
         f"- **last_good_cycle**: `{state.get('last_good_cycle')}`",
         f"- **last_error**: {state.get('last_error')}",
+        f"- **last_keep_branch**: `{state.get('last_keep_branch')}` (proposal only; not merged)",
+        f"- **last_keep_sha**: `{state.get('last_keep_sha')}`",
         f"- **spend**: `{json.dumps(state.get('spend') or {})}`",
         "",
     ]

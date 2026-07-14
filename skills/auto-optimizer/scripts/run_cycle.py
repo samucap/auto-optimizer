@@ -33,6 +33,7 @@ from paths import (  # noqa: E402
 )
 from results_log import append_result  # noqa: E402
 from state import load_state, new_cycle_id, save_state  # noqa: E402
+from keep_apply import apply_keep  # noqa: E402
 from tournament import pick_winner  # noqa: E402
 from validate_output import validate_files  # noqa: E402
 
@@ -136,6 +137,7 @@ def run_cycle(
     dry_run: bool = False,
     force_fail: str | None = None,
     live: bool = False,
+    keep_mode: str | None = None,
 ) -> dict[str, Any]:
     root = project_root or resolve_project_root(local=local)
     hroot = harness_root(root)
@@ -187,6 +189,7 @@ def run_cycle(
     partial: dict[str, Any] = {}
     scores: dict[str, Any] = {}
     kept = False
+    keep_meta: dict[str, Any] = {}
     status = "failed"
     root_cause: str | None = None
     recommendation: str | None = None
@@ -479,15 +482,13 @@ def run_cycle(
             gr = run_grok_prompt(prompt, cwd=root, log_path=err_log)
             partial["reviewer_final"] = {"ok": gr.get("ok")}
 
-        # --- Keep / revert ---
+        # --- Keep / revert (proposal only — Karpathy-style) ---
         state["active_stage"] = "keep_revert"
         save_state(hroot, state)
         keep_policy = mod.get("keep_policy") or {}
         require_improved = keep_policy.get("require_primary_improved", True)
 
         if winner and not failed_stages:
-            # Offline: "keep" means copy improved sandbox into module sandbox if improved
-            # vs baseline eval of template sandbox
             baseline_cand = cdir / "baseline_candidate"
             prepare_candidate_from_template(mdir, baseline_cand, improve=False)
             from eval import run_eval
@@ -507,27 +508,55 @@ def run_cycle(
                     improved = float(winner["primary"]) < float(base_scores["primary"])
                 else:
                     improved = float(winner["primary"]) > float(base_scores["primary"])
+
             if require_improved and not improved:
                 kept = False
-                root_cause = root_cause or "primary metric did not improve"
+                root_cause = None  # not a pipeline failure — no proposal
+                status = "success"
+                recommendation = (
+                    "Eval did not improve primary metric; no proposal branch opened. "
+                    "Inspect candidates and try next cycle."
+                )
             else:
-                kept = True
-                # Apply keep: copy winner sandbox into module sandbox
-                src = Path(winner["path"]) / "sandbox"
-                dst = mdir / "sandbox"
-                if src.exists() and not dry_run:
-                    if dst.exists():
-                        shutil.rmtree(dst)
-                    shutil.copytree(src, dst)
-            status = "success" if kept or not require_improved else "failed"
-            if kept:
-                status = "success"
-                root_cause = None
-            elif status != "failed":
-                status = "success"  # completed cycle without keep is still success operationally
-                # plan: keep optional — cycle success even if not kept, if pipeline completed
-                status = "success"
-                root_cause = None
+                findings = None
+                summary_p = cdir / "01_research" / "summary.md"
+                if summary_p.exists():
+                    findings = summary_p.read_text(encoding="utf-8")[:4000]
+                rec = (
+                    "Proposal branch opened (not merged). Review AO_KEEP.md and metrics, "
+                    "then merge only if you accept the change."
+                )
+                kr = apply_keep(
+                    project_root=root,
+                    module=name,
+                    mdir=mdir,
+                    candidate_dir=Path(winner["path"]),
+                    cycle_id=cycle_id,
+                    mod=mod,
+                    scores=scores,
+                    experiment_path=str(cdir),
+                    recommendation=rec,
+                    findings=findings,
+                    dry_run=dry_run,
+                    keep_mode=keep_mode,
+                )
+                keep_meta = kr.to_dict()
+                _write_json(cdir / "keep.json", keep_meta)
+                if kr.kept:
+                    kept = True
+                    status = "success"
+                    root_cause = None
+                    recommendation = rec
+                    if kr.review_commands:
+                        recommendation += "\n\n" + "\n".join(f"`{c}`" for c in kr.review_commands)
+                    state["last_keep_branch"] = kr.branch
+                    state["last_keep_sha"] = kr.commit_sha
+                else:
+                    kept = False
+                    status = "failed"
+                    root_cause = kr.error or "keep proposal failed"
+                    failed_stages.append("keep")
+                    log_event(err_log, {"type": "keep_failed", "keep": keep_meta})
         elif winner and force_fail is None and not any(
             s in failed_stages for s in ("researcher", "architect", "executor")
         ):
@@ -540,12 +569,6 @@ def run_cycle(
             else:
                 status = "failed"
                 root_cause = root_cause or "cycle failed"
-
-        # If pipeline completed with winner and no hard stage failures, mark success
-        if winner and not failed_stages and force_fail is None:
-            status = "success"
-            if not require_improved:
-                kept = bool(winner)
 
         # Forced failure modes (self-test) override terminal status
         if force_fail == "budget":
@@ -573,8 +596,14 @@ def run_cycle(
         kept=kept,
         recommendation=recommendation,
         errors_path=str(err_log) if err_log.exists() else None,
+        extra={"keep": keep_meta} if keep_meta else None,
     )
+    # kept=true means proposal opened, not merged into current branch
+    if kept and keep_meta.get("mode") == "branch":
+        report["recommendation"] = recommendation or report.get("recommendation")
     write_cycle_report(cdir, report)
+    if keep_meta and not (cdir / "keep.json").exists():
+        _write_json(cdir / "keep.json", keep_meta)
 
     if status != "success":
         analysis = analyze_failure(report)
@@ -592,7 +621,17 @@ def run_cycle(
 
     state["status"] = status
     state["active_stage"] = "done"
+    # state is loop control only; science lives in cycle_report + results_log (+ proposal branch)
     save_state(hroot, state)
+
+    notes = root_cause or ""
+    if keep_meta.get("branch"):
+        notes = (
+            f"proposal_branch={keep_meta.get('branch')} "
+            f"commit={keep_meta.get('commit_sha')} merged=false"
+        ).strip()
+        if root_cause:
+            notes = f"{root_cause}; {notes}"
 
     append_result(
         hroot,
@@ -605,7 +644,7 @@ def run_cycle(
             "baseline_value": scores.get("baseline", ""),
             "delta": "",
             "kept": kept,
-            "notes": root_cause or "",
+            "notes": notes,
         },
     )
 
@@ -620,6 +659,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--offline", action="store_true", help="No grok CLI; mock research stages")
     ap.add_argument("--live", action="store_true", help="Use grok CLI for agent stages")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--keep-mode",
+        choices=["auto", "branch", "inplace"],
+        default=None,
+        help="How to open a keep proposal (default: auto → branch if git else inplace)",
+    )
     ap.add_argument(
         "--force-fail",
         choices=["schema", "eval", "reward_hack", "budget"],
@@ -638,6 +683,7 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
             force_fail=args.force_fail,
             live=args.live,
+            keep_mode=args.keep_mode,
         )
     except Exception as e:
         print(json.dumps({"status": "failed", "error": str(e)}), file=sys.stderr)

@@ -168,6 +168,31 @@ Same tree as `start-loop.sh` (not installed to `PATH`):
 
 ---
 
+## Reviewing a keep proposal
+
+When eval says a candidate improved the primary metric, auto-optimizer opens a **git proposal branch** — it does **not** merge into your current branch (Karpathy-style: experiment → measure → propose → human may implement).
+
+```bash
+# after a successful cycle with kept=true
+git branch --list 'ao/*'
+git log -1 ao/<module>/<cycle_id>
+git show ao/<module>/<cycle_id>:AO_KEEP.md
+git show ao/<module>/<cycle_id>:AO_KEEP_SCORES.json
+
+# accept the proposal only if you want it in the codebase
+git merge ao/<module>/<cycle_id>
+```
+
+Also always check the harness ledger:
+
+- `.grok/auto-optimizer/experiments/<module>/<cycle_id>/cycle_report.md`
+- `.grok/auto-optimizer/experiments/<module>/<cycle_id>/keep.json`
+- `.grok/auto-optimizer/results.tsv`
+
+`kept=true` means **proposal opened**, not **shipped to production**.
+
+---
+
 ## Self-test
 
 What it does: an **offline** integration suite in a **temporary directory** (no Grok TUI; no API key required for the default path).

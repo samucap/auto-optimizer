@@ -105,15 +105,24 @@ If the user is in TUI and wants **native subagents**, you (this session) orchest
 - Discard reward_hack; pick best by metrics.direction
 - Final **ao-reviewer** pass on winner
 
-### 6. Keep / revert
+### 6. Keep = proposal branch (not auto-merge)
 
-- If primary improved (per direction) and secondary gates pass → apply winner changes into project (or module sandbox for template modules)
-- Else leave tree unchanged
-- Append results via cycle completion (or `results_log`)
+Karpathy-style / DRL-eval pipeline: if primary improved and gates pass → open a **reviewable git proposal**, do **not** merge into the user’s current branch.
 
-### 7. Always write cycle report
+Protocol (execute-plan-aligned; never checkout-switch the main workspace):
 
-Use `scripts/cycle_report.py` patterns: status, root_cause, failed_stages, partial_progress, scores, kept, recommendation.
+1. `git branch ao/<module>/<cycle_id> <base_sha>`
+2. `git worktree add <tmp> ao/<module>/<cycle_id>`
+3. Apply winner files; commit `AO_KEEP.md` + `AO_KEEP_SCORES.json` (+ changed files, force-add if under gitignored `.grok/`)
+4. Remove worktree; write `experiments/.../keep.json`
+5. `kept: true` means **proposal opened**; `merged: false`
+
+If not a git repo, fallback inplace copy (`keep_policy.mode` / `--keep-mode`).
+
+### 7. Always write cycle report + results_log
+
+Mandatory every cycle: `cycle_report.json`/`.md` and append `results.tsv`/`results.jsonl`.  
+`state.json` is loop control only (pointers like `last_keep_branch`), not the science ledger.
 
 ### 8. On failure
 

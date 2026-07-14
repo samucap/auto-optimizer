@@ -31,9 +31,38 @@ experiments/<module>/<cycle_id>/
 5. Reviewer (adversarial)
 6. Executor tournament + eval oracle
 7. Final reviewer
-8. keep/revert
-9. results.tsv + cycle report
+8. **Keep as proposal** (not auto-merge)
+9. **cycle_report** + **results.tsv** (mandatory ledger)
 10. On failure: failure_analysis → next_cycle_hints
+
+## Keep = proposal (Karpathy-style)
+
+Experiments are **proposals**, not deployments — similar to a DRL/eval pipeline that emits candidates for review:
+
+| Outcome | Meaning |
+|---------|---------|
+| `kept: true` | Eval improved → **git branch proposal** opened (`ao/<module>/<cycle_id>`) |
+| `merged: false` | Default: **never** merges into the current branch |
+| Main working tree | Unchanged on branch keep |
+
+Self-contained review files committed on the proposal branch (experiments under `.grok/` are often gitignored):
+
+- `AO_KEEP.md` — metrics, findings, review/merge commands
+- `AO_KEEP_SCORES.json` — machine-readable scores
+
+Also written under the cycle dir (local harness):
+
+- `cycle_report.json` / `.md` — full scientific record
+- `keep.json` — branch, commit_sha, files, mode
+- `results.tsv` / `results.jsonl` — longitudinal log
+
+`state.json` is **loop control only** (active cycle, last_keep_* pointers). It is not the experiment archive.
+
+```bash
+git log -1 ao/<module>/<cycle_id>
+git show ao/<module>/<cycle_id>:AO_KEEP.md
+git merge ao/<module>/<cycle_id>   # only if you accept
+```
 
 ## Subagent rules
 
