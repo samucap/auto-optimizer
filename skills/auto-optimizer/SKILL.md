@@ -19,33 +19,34 @@ You are the **orchestrator** for a modular Karpathy-style optimization loop nati
 
 | What | Where |
 |------|--------|
-| This skill | `~/.grok/skills/auto-optimizer` (symlink to versioned `~/code/asians`) |
+| This skill | `~/.grok/skills/auto-optimizer` (symlink to this repo’s `skills/auto-optimizer`) |
 | Scripts | `<skill>/scripts/` (always via `uv run --with-requirements ...`) |
 | Workspace harness | `<project>/.grok/auto-optimizer/` |
 | Personas | `~/.grok/personas/ao-*.toml` |
+| Clone / AO_HOME | Path to this repository (set `AO_HOME` or use absolute skill path) |
 | References | `<skill>/references/` |
 
 ## Invocation
 
 Parse args from the user message: `--module`, `--once`, `--max-cycles`, `--local`, `--interval`, `--no-tmux`, `--dry-run`, `--live`, `--resume`.
 
-### Prefer CLI when available
+### Prefer shell entrypoints from the clone when needed
 
 ```bash
-# Ensure workspace
-auto-optimizer init [--local] [--with-self-test]
+export AO_HOME=<path-to-this-repo>   # clone of the auto-optimizer repo
+
+# Ensure workspace + create a named module from template
+"$AO_HOME/skills/auto-optimizer/bin/auto-optimizer" init --module <name>
 
 # Single offline-safe cycle (mock research stages + real module eval)
-auto-optimizer once --module <name>
+"$AO_HOME/skills/auto-optimizer/bin/auto-optimizer" once --module <name>
 
 # Continuous background loop (tmux default)
-auto-optimizer start --module <name> [--interval 5m] [--max-cycles N]
+"$AO_HOME/skills/auto-optimizer/bin/start-loop.sh" --module <name> [--interval 5m] [--max-cycles N]
 
-# Live multi-agent via grok CLI stages
-auto-optimizer once --module <name> --live
-# (pass through: the bin wrapper maps once → offline by default; for live use:)
-uv run --with-requirements <skill>/scripts/requirements.txt \
-  python <skill>/scripts/run_cycle.py --module <name> --live
+# Script orchestrator
+"$AO_HOME/skills/auto-optimizer/scripts/acp-orchestrator.sh" --once --module <name>
+"$AO_HOME/skills/auto-optimizer/scripts/acp-orchestrator.sh" --once --module <name> --live
 ```
 
 If the user is in TUI and wants **native subagents**, you (this session) orchestrate with `spawn_subagent` as below instead of only shelling out.
@@ -53,7 +54,7 @@ If the user is in TUI and wants **native subagents**, you (this session) orchest
 ## Step 0 — Workspace + module
 
 1. Resolve project root (git root unless `--local`).
-2. If `<root>/.grok/auto-optimizer` missing → run `auto-optimizer init`.
+2. If `<root>/.grok/auto-optimizer` missing → run `…/bin/auto-optimizer init [--module NAME]`.
 3. Load module: `uv run ... scripts/load_module.py --module ...` or read `modules/<name>/module.yaml`.
 4. Read `next_cycle_hints.md` if present; inject into Researcher/Analyst.
 5. Create `experiments/<module>/<cycle_id>/` (cycle_id via `python -c` uuid/time).
@@ -120,9 +121,9 @@ Run failure analysis (`scripts/failure_analysis.py` logic): write `next_cycle_hi
 
 ## Continuous loop
 
-- For background: `auto-optimizer start` (tmux session `ao-<module>`).
+- For background: `$AO_HOME/skills/auto-optimizer/bin/start-loop.sh` (tmux session `ao-<module>`).
 - Or `/loop <interval> /auto-optimizer --module ... --once` in TUI.
-- Stop: `auto-optimizer stop` or write `.grok/auto-optimizer/STOP`.
+- Stop: `…/bin/auto-optimizer stop` or write `.grok/auto-optimizer/STOP`.
 
 ## Hard rules
 
