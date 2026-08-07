@@ -6,8 +6,8 @@ This repository is the **versioned source of truth**. `./install.sh` registers t
 
 In the examples below:
 
-- `<repo-root>` — wherever you cloned **this** repository  
-- `$AO_HOME` — optional convenience: `export AO_HOME=<repo-root>`  
+- `<repo-root>` — wherever you cloned **this** repository
+- `$AO_HOME` — optional convenience: `export AO_HOME=<repo-root>`
 - Target project — the codebase you want to optimize (may be a different directory)
 
 ---
@@ -21,12 +21,12 @@ cd <repo-root>
 
 This symlinks into:
 
-| Link | Target |
-|------|--------|
+| Link                            | Target                              |
+| ------------------------------- | ----------------------------------- |
 | `~/.grok/skills/auto-optimizer` | `<repo-root>/skills/auto-optimizer` |
-| `~/.grok/personas/ao-*.toml` | `<repo-root>/personas/...` |
-| `~/.grok/roles/ao-*.toml` | `<repo-root>/roles/...` |
-| `~/.grok/agents/ao-*.md` | `<repo-root>/agents/...` |
+| `~/.grok/personas/ao-*.toml`    | `<repo-root>/personas/...`          |
+| `~/.grok/roles/ao-*.toml`       | `<repo-root>/roles/...`             |
+| `~/.grok/agents/ao-*.md`        | `<repo-root>/agents/...`            |
 
 Then in Grok TUI (any project):
 
@@ -78,17 +78,17 @@ Then edit:
 
 ### Important `module.yaml` fields
 
-| Field | Purpose |
-|-------|---------|
-| `topic` / `goal` | What to research and optimize |
-| `metrics.primary` / `metrics.direction` | `minimize` or `maximize` the primary score |
-| `metrics.secondary` | Hard gates (e.g. `correctness >= 1.0`) |
-| `files_to_edit` / `files_forbidden` | What executors may touch |
-| `budgets` | Cycles, reviewer rounds, tournament sizes |
-| `stages` | Enable stages; researcher `web`, candidate counts |
-| `eval` | Timeouts/retries; optional command (or use module-local `eval.py`) |
-| `sources` / `source_paths` | Seeds for the Researcher |
-| `keep_policy` | When to open a keep **proposal** (`mode`, primary/gates); never auto-merges |
+| Field                                   | Purpose                                                                     |
+| --------------------------------------- | --------------------------------------------------------------------------- |
+| `topic` / `goal`                        | What to research and optimize                                               |
+| `metrics.primary` / `metrics.direction` | `minimize` or `maximize` the primary score                                  |
+| `metrics.secondary`                     | Hard gates (e.g. `correctness >= 1.0`)                                      |
+| `files_to_edit` / `files_forbidden`     | What executors may touch                                                    |
+| `budgets`                               | Cycles, reviewer rounds, tournament sizes                                   |
+| `stages`                                | Enable stages; researcher `web`, candidate counts                           |
+| `eval`                                  | Timeouts/retries; optional command (or use module-local `eval.py`)          |
+| `sources` / `source_paths`              | Seeds for the Researcher                                                    |
+| `keep_policy`                           | When to open a keep **proposal** (`mode`, primary/gates); never auto-merges |
 
 Optional: module-local `eval.py` next to `module.yaml` (see `_template`).
 
@@ -118,15 +118,15 @@ export AO_HOME=<repo-root>
 "$AO_HOME/skills/auto-optimizer/bin/start-loop.sh" --module my-first-goal --stop-on-fail
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `--module NAME` | Module under `.grok/auto-optimizer/modules/` |
-| `--max-cycles N` | Stop after N cycles |
-| `--interval DUR` | Sleep between cycles (`60s`, `5m`, `1h`) |
-| `--no-tmux` | Foreground loop (also used if tmux is missing) |
-| `--live` | Use `grok -p` for agent stages (needs `grok` CLI) |
-| `--local` | Harness under CWD, not git root |
-| `--stop-on-fail` | Exit loop on first non-success cycle |
+| Flag             | Meaning                                           |
+| ---------------- | ------------------------------------------------- |
+| `--module NAME`  | Module under `.grok/auto-optimizer/modules/`      |
+| `--max-cycles N` | Stop after N cycles                               |
+| `--interval DUR` | Sleep between cycles (`60s`, `5m`, `1h`)          |
+| `--no-tmux`      | Foreground loop (also used if tmux is missing)    |
+| `--live`         | Use `grok -p` for agent stages (needs `grok` CLI) |
+| `--local`        | Harness under CWD, not git root                   |
+| `--stop-on-fail` | Exit loop on first non-success cycle              |
 
 Stop a running loop:
 
@@ -220,12 +220,12 @@ Exits `0` only if all assertions pass. `--live` is optional manual smoke (not a 
 
 ## Layout
 
-| Path | Role |
-|------|------|
-| `skills/auto-optimizer/` | Skill (`SKILL.md`), scripts, bin runners, module templates |
-| `personas/`, `roles/`, `agents/` | Grok defs (`ao-*`) |
-| `install.sh` / `uninstall.sh` | Symlink into / out of `~/.grok` only |
-| Target project `.grok/auto-optimizer/` | Modules, experiments, state (created by `init`) |
+| Path                                   | Role                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `skills/auto-optimizer/`               | Skill (`SKILL.md`), scripts, bin runners, module templates |
+| `personas/`, `roles/`, `agents/`       | Grok defs (`ao-*`)                                         |
+| `install.sh` / `uninstall.sh`          | Symlink into / out of `~/.grok` only                       |
+| Target project `.grok/auto-optimizer/` | Modules, experiments, state (created by `init`)            |
 
 ---
 
@@ -241,3 +241,8 @@ Exits `0` only if all assertions pass. `--live` is optional manual smoke (not a 
 ## License
 
 Apache-2.0 (or project default)
+
+## TODO
+
+    - ensure to review /guides AGENTS.md, subagents & personas, session management, background tasks and monitoring and any other docs related to running subagents
+    securely and reliably while properly managing context for optimal input/output of subagents
